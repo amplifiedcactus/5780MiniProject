@@ -7,7 +7,7 @@ Stephen Ehlert
 
 Ajayvarman Mallapillai
 
-SriAishwarya Sivagurunathan
+Sriaishwarya Sivagurunathan
 
 
 PROJECT TITLE:
