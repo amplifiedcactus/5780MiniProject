@@ -33,6 +33,9 @@
 /* USER CODE BEGIN PD */
 char r = 0; //This is for the character typed into the terminal
 int usart_flag = 0; //Flag for if a character has been read by UART3
+
+int lastCommand = 0; //This variable holds the last transmitted MIDI command for implementing running status
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -86,42 +89,79 @@ void setupUART3(void) {
 	USART3->CR1 |= (1 << 0);
 }
 
+//This function takes a command (x), note (y), and velocity (z) as inputs and transmits them to the UART interface
 void sendMIDI(int x, int y, int z) {
-	//wait for transmit register to be empty
 	
-	//send command
+	
+	//If last command is not same as previous (running status), send command once transmit register is empty
+	if (x != lastCommand) {
+		while (1) {
+			if (USART3->ISR & (1 << 7)) {
+				break;
+			}
+		}
+		USART3->TDR = x;
+	}
+	
+	//send note once transmit register is empty
 	while (1) {
 		if (USART3->ISR & (1 << 7)) {
 			break;
 		}
 	}
-	
-	USART3->TDR = x;
-	
-	//send note
-	while (1) {
-		if (USART3->ISR & (1 << 7)) {
-			break;
-		}
-	}
-	
 	USART3->TDR = y;
 	
-	//send velocity word
+	//send velocity once transmit register is empty
 	while (1) {
 		if (USART3->ISR & (1 << 7)) {
 			break;
 		}
 	}
-	
 	USART3->TDR = z;
 	
+	//update last command variable
+	lastCommand = x;
 }
 
 //This is the USART3 interrupt handler that puts the read character into char r and sets the usart_flag
 void USART3_4_IRQHandler(void) {
 	r = USART3->RDR;
 	usart_flag = 1;
+}
+
+
+//set up pin PC0 as analog input 10 for ADC
+void setupADC(void) {
+	RCC->APB2ENR |= RCC_APB2ENR_ADCEN; //Enable peripheral clock to ADC1
+	//Set to analog mode
+	GPIOC->MODER |= (1 << 1) | (1 << 0);
+	// Set to push pull output type
+	GPIOC->OTYPER &= ~(1 << 0);
+	// Set to low speed
+	GPIOC->OSPEEDR &= ~(1 << 0);
+	// Set to no pullup/down resistor
+	GPIOC->PUPDR &= ~((1 << 1) | (1 << 0));
+	
+	//Set ADC to 8 bit resolution, continuous conversion, hardware triggers disabled
+	ADC1->CFGR1 |= (1 << 13) | (1 << 4);
+	ADC1->CFGR1 &= ~((1 << 11) | (1 << 10) | (1 << 3));
+	//Select channel 10
+	ADC1->CHSELR |= (1 << 10);
+	
+	//Perform self-calibration
+	ADC1->CR |= (1 << 31);
+	//wait for self-calibration to complete
+	while((ADC1->CR & (1 << 31)) != 0) {
+		HAL_Delay(100);
+	}
+	//Enable ADC peripheral
+	ADC1->CR |= (1 << 0);
+	//wait until ADC is ready
+	while((ADC1->ISR & ADC_ISR_ADRDY) == 0) {
+		HAL_Delay(100);
+	}
+	//start ADC by setting ADSTART bit
+	ADC1->CR |= (1 << 2);
 }
 
 /* USER CODE END 0 */
@@ -166,10 +206,11 @@ int main(void)
 	
 	RCC->AHBENR |= RCC_AHBENR_GPIOCEN; // Enable peripheral clock to GPIOC
 	RCC->AHBENR |= RCC_AHBENR_GPIOAEN; // Enable peripheral clock to GPIOA
-
 	RCC->APB1ENR |= RCC_APB1ENR_USART3EN; // Enable peripheral clock to USART3
 	
 	setupUART3();
+	setupADC();
+	
 	
 	//Initialize 4 byte array for note on command
 	//Most significant byte is command, then channel, then note, then velocity
@@ -198,6 +239,8 @@ int main(void)
     uint8_t debounceDelay = 50; // Debounce delay
 
     while (1) {
+			
+			
         currentState = GPIOA->IDR & 0x1; // read button
         if (currentState != prevState) {
             HAL_Delay(debounceDelay); 
@@ -213,6 +256,8 @@ int main(void)
                 }
             }
         }
+				
+				
     }
 
 		
