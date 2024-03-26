@@ -18,7 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-//test edit
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
@@ -31,7 +31,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+char r = 0; //This is for the character typed into the terminal
+int usart_flag = 0; //Flag for if a character has been read by UART3
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -54,12 +55,82 @@ void SystemClock_Config(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+void setupUART3(void) {
+	
+	// Set PC4 (USART3_TX) and PC5 (USART3_RX) to alternate function mode
+	GPIOC->MODER |= (1 << 11) | (1 << 9);
+	GPIOC->MODER &= ~((1 << 10) | (1 << 8));
+	// Set to push pull output type
+	GPIOC->OTYPER &= ~((1 << 5) | (1 << 4));
+	// Set to low speed
+	GPIOC->OSPEEDR &= ~((1 << 11) | (1 << 10) | (1 << 9) | (1 << 8));
+	// Set to no pullup/down resistor
+	GPIOC->PUPDR &= ~((1 << 11) | (1 << 10) | (1 << 9) | (1 << 8));
+	
+	//Select AF1 for PC4 and PC5
+	GPIOC->AFR[0] |= 0x01 << GPIO_AFRL_AFSEL4_Pos;
+	GPIOC->AFR[0] |= 0x01 << GPIO_AFRL_AFSEL5_Pos;
+	
+	//set baud rate to about 31250
+	USART3->BRR = HAL_RCC_GetHCLKFreq() / 31250;
+	
+	//enable transmitter and receiver
+	USART3->CR1 |= (1 << 3) | (1 << 2);
+	
+	//enable RXNE interrupt
+	USART3->CR1 |= (1 << 5);
+	NVIC_EnableIRQ (USART3_4_IRQn); //enable NVIC interrupt
+	NVIC_SetPriority (USART3_4_IRQn, 3);
+	
+	//enable USART 3
+	USART3->CR1 |= (1 << 0);
+}
+
+void sendMIDI(int x, int y, int z) {
+	//wait for transmit register to be empty
+	
+	//send command
+	while (1) {
+		if (USART3->ISR & (1 << 7)) {
+			break;
+		}
+	}
+	
+	USART3->TDR = x;
+	
+	//send note
+	while (1) {
+		if (USART3->ISR & (1 << 7)) {
+			break;
+		}
+	}
+	
+	USART3->TDR = y;
+	
+	//send velocity word
+	while (1) {
+		if (USART3->ISR & (1 << 7)) {
+			break;
+		}
+	}
+	
+	USART3->TDR = z;
+	
+}
+
+//This is the USART3 interrupt handler that puts the read character into char r and sets the usart_flag
+void USART3_4_IRQHandler(void) {
+	r = USART3->RDR;
+	usart_flag = 1;
+}
+
 /* USER CODE END 0 */
 
 /**
   * @brief  The application entry point.
   * @retval int
   */
+	
 int main(void)
 {
   /* USER CODE BEGIN 1 */
@@ -89,12 +160,62 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
-  {
-    /* USER CODE END WHILE */
+	
+	
 
-    /* USER CODE BEGIN 3 */
-  }
+	
+	RCC->AHBENR |= RCC_AHBENR_GPIOCEN; // Enable peripheral clock to GPIOC
+	RCC->AHBENR |= RCC_AHBENR_GPIOAEN; // Enable peripheral clock to GPIOA
+
+	RCC->APB1ENR |= RCC_APB1ENR_USART3EN; // Enable peripheral clock to USART3
+	
+	setupUART3();
+	
+	//Initialize 4 byte array for note on command
+	//Most significant byte is command, then channel, then note, then velocity
+	int noteOnCommand = 0x90;
+	int note = 0x40;
+	int velocityOn = 0x40;
+	int velocityOff = 0x00;
+
+	
+		
+		
+//	Note On and Off are each comprised of three bytes
+
+//	0xnc, 0xkk, 0xvv
+//	Where
+
+//	n is the command (note on (0x9) or off(0x8))
+//	c is the channel (1 to 16)
+//	kk is the key number (0 to 127, where middle C is key number 60)
+//	vv is the striking velocity (0 to 127)
+		
+		
+		
+		uint8_t prevState = 0;
+    uint8_t currentState = 0;
+    uint8_t debounceDelay = 50; // Debounce delay
+
+    while (1) {
+        currentState = GPIOA->IDR & 0x1; // read button
+        if (currentState != prevState) {
+            HAL_Delay(debounceDelay); 
+            currentState = GPIOA->IDR & 0x1; // Re-check button state
+            if (currentState != prevState) {
+                prevState = currentState; // Update state
+                if (currentState) {
+                    // Button pressed
+                    sendMIDI(noteOnCommand, note, velocityOn);
+                } else {
+                    // Button released
+                    sendMIDI(noteOnCommand, note, velocityOff);
+                }
+            }
+        }
+    }
+
+		
   /* USER CODE END 3 */
 }
 
