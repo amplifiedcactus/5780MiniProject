@@ -66,6 +66,7 @@ void SystemClock_Config(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+
 void setupUART3(void) {
 	
 	// Set PC4 (USART3_TX) and PC5 (USART3_RX) to alternate function mode
@@ -172,6 +173,14 @@ void setupADC(void) {
 	ADC1->CR |= (1 << 2);
 }
 
+uint32_t readADC(void) {
+    // Start ADC conversion
+    ADC1->CR |= ADC_CR_ADSTART;
+    // Wait for conversion to complete
+    while (!(ADC1->ISR & ADC_ISR_EOC)) {}
+    return ADC1->DR; // Read ADC value
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -220,6 +229,9 @@ int main(void)
 	setupADC();
 	
 	
+	GPIOA->PUPDR |= 0xAAA8;
+	
+	
 	//Initialize 4 byte array for note on command
 	//Most significant byte is command, then channel, then note, then velocity
 	int noteOnCommand = 0x90;
@@ -227,7 +239,10 @@ int main(void)
 	int note = 0x40;
 	int velocityOn = 0x40;
 	int velocityOff = 0x00;
-
+	
+	int volCommand = 0xB0;
+	int volCtrl = 0x07;
+	
 	
 		
 		
@@ -249,7 +264,9 @@ int main(void)
 		uint8_t prevState[6] = {0}; // One for each button
     uint8_t currentState;
     uint8_t debounceDelay = 50; // Debounce delay
-
+		
+		uint8_t ADCState; //State for potentiometer
+		uint8_t prevADCState = 0; 
 		
 
       while (1) {
@@ -258,8 +275,8 @@ int main(void)
        switch (button) {
         case 0: currentState = GPIOA->IDR & (1 << 0); break; // Original button
         case 1: currentState = GPIOA->IDR & (1 << 1); break; // Have to check for actual pins on GPIOA
-        case 2: currentState = GPIOA->IDR & (1 << 2); break;
-        case 3: currentState = GPIOA->IDR & (1 << 3); break;
+        case 2: currentState = GPIOA->IDR & (1 << 6); break;
+        case 3: currentState = GPIOA->IDR & (1 << 7); break;
         case 4: currentState = GPIOA->IDR & (1 << 4); break;
         case 5: currentState = GPIOA->IDR & (1 << 5); break;
     }
@@ -270,8 +287,8 @@ int main(void)
         switch (button) {
             case 0: currentState = GPIOA->IDR & (1 << 0); break;
             case 1: currentState = GPIOA->IDR & (1 << 1); break; // Repeat for rechecking
-            case 2: currentState = GPIOA->IDR & (1 << 2); break;
-            case 3: currentState = GPIOA->IDR & (1 << 3); break;
+            case 2: currentState = GPIOA->IDR & (1 << 6); break;
+            case 3: currentState = GPIOA->IDR & (1 << 7); break;
             case 4: currentState = GPIOA->IDR & (1 << 4); break;
             case 5: currentState = GPIOA->IDR & (1 << 5); break;
         }
@@ -289,6 +306,14 @@ int main(void)
             }
         }
     }
+		
+
+		//Check to see if potentiometer changed, if it did, send value through MIDI
+		ADCState = (readADC() >> 1); // read state
+        if (ADCState != prevADCState) {
+					sendMIDI(volCommand, volCtrl, ADCState);
+					prevADCState = ADCState; // Update state
+        }
 }
 		
   /* USER CODE END 3 */
