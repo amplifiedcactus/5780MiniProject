@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -35,6 +36,13 @@ char r = 0; //This is for the character typed into the terminal
 int usart_flag = 0; //Flag for if a character has been read by UART3
 
 int lastCommand = 0; //This variable holds the last transmitted MIDI command for implementing running status
+// MIDI notes for each button
+#define NOTE_BUTTON_1 0x40 // E3
+#define NOTE_BUTTON_2 0x41 // F3
+#define NOTE_BUTTON_3 0x42 // F#3(Gb3)
+#define NOTE_BUTTON_4 0x43 // G3
+#define NOTE_BUTTON_5 0x44 // G#3(Ab3)
+#define NOTE_BUTTON_6 0x45 // A3
 
 /* USER CODE END PD */
 
@@ -44,7 +52,7 @@ int lastCommand = 0; //This variable holds the last transmitted MIDI command for
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-
+uint32_t readADC(void); // Function to read ADC value
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -215,6 +223,7 @@ int main(void)
 	//Initialize 4 byte array for note on command
 	//Most significant byte is command, then channel, then note, then velocity
 	int noteOnCommand = 0x90;
+	int noteOffCommand = 0x80;//note off
 	int note = 0x40;
 	int velocityOn = 0x40;
 	int velocityOff = 0x00;
@@ -234,32 +243,53 @@ int main(void)
 		
 		
 		
-		uint8_t prevState = 0;
-    uint8_t currentState = 0;
+	//	uint8_t prevState = 0;
+    //uint8_t currentState = 0;
+    //uint8_t debounceDelay = 50; // Debounce delay
+		uint8_t prevState[6] = {0}; // One for each button
+    uint8_t currentState;
     uint8_t debounceDelay = 50; // Debounce delay
 
-    while (1) {
-			
-			
-        currentState = GPIOA->IDR & 0x1; // read button
-        if (currentState != prevState) {
-            HAL_Delay(debounceDelay); 
-            currentState = GPIOA->IDR & 0x1; // Re-check button state
-            if (currentState != prevState) {
-                prevState = currentState; // Update state
+		
+
+      while (1) {
+    // Loop over each button and check its state
+    for (int button = 0; button < 6; button++) {
+       switch (button) {
+        case 0: currentState = GPIOA->IDR & (1 << 0); break; // Original button
+        case 1: currentState = GPIOA->IDR & (1 << 1); break; // Have to check for actual pins on GPIOA
+        case 2: currentState = GPIOA->IDR & (1 << 2); break;
+        case 3: currentState = GPIOA->IDR & (1 << 3); break;
+        case 4: currentState = GPIOA->IDR & (1 << 4); break;
+        case 5: currentState = GPIOA->IDR & (1 << 5); break;
+    }
+
+    if (currentState != prevState[button]) {
+        HAL_Delay(debounceDelay); // Debounce
+        // Recheck state after delay
+        switch (button) {
+            case 0: currentState = GPIOA->IDR & (1 << 0); break;
+            case 1: currentState = GPIOA->IDR & (1 << 1); break; // Repeat for rechecking
+            case 2: currentState = GPIOA->IDR & (1 << 2); break;
+            case 3: currentState = GPIOA->IDR & (1 << 3); break;
+            case 4: currentState = GPIOA->IDR & (1 << 4); break;
+            case 5: currentState = GPIOA->IDR & (1 << 5); break;
+        }
+
+            if (currentState != prevState[button]) {
+                prevState[button] = currentState;
+                int note = NOTE_BUTTON_1 + button; // Assign the note based on button index
                 if (currentState) {
                     // Button pressed
                     sendMIDI(noteOnCommand, note, velocityOn);
                 } else {
                     // Button released
-                    sendMIDI(noteOnCommand, note, velocityOff);
+                    sendMIDI(noteOffCommand, note, velocityOff);
                 }
             }
         }
-				
-				
     }
-
+}
 		
   /* USER CODE END 3 */
 }
