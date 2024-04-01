@@ -98,6 +98,11 @@ void setupUART3(void) {
 	USART3->CR1 |= (1 << 0);
 }
 
+
+
+
+
+
 //This function takes a command (x), note (y), and velocity (z) as inputs and transmits them to the UART interface
 void sendMIDI(int x, int y, int z) {
 	
@@ -223,6 +228,7 @@ int main(void)
 	
 	RCC->AHBENR |= RCC_AHBENR_GPIOCEN; // Enable peripheral clock to GPIOC
 	RCC->AHBENR |= RCC_AHBENR_GPIOAEN; // Enable peripheral clock to GPIOA
+	RCC->AHBENR |= RCC_AHBENR_GPIOBEN; // Enable peripheral clock to GPIOA
 	RCC->APB1ENR |= RCC_APB1ENR_USART3EN; // Enable peripheral clock to USART3
 	
 	setupUART3();
@@ -230,6 +236,10 @@ int main(void)
 	
 	
 	GPIOA->PUPDR |= 0xAAA8;
+	GPIOC->PUPDR |= (1 << 3) | (1 << 5);
+	GPIOB->MODER &= ~0xF;
+	GPIOB->OTYPER &= ~0x3;
+
 	
 	
 	//Initialize 4 byte array for note on command
@@ -246,49 +256,36 @@ int main(void)
 	
 		
 		
-//	Note On and Off are each comprised of three bytes
-
-//	0xnc, 0xkk, 0xvv
-//	Where
-
-//	n is the command (note on (0x9) or off(0x8))
-//	c is the channel (1 to 16)
-//	kk is the key number (0 to 127, where middle C is key number 60)
-//	vv is the striking velocity (0 to 127)
 		
 		
-		
-	//	uint8_t prevState = 0;
-    //uint8_t currentState = 0;
-    //uint8_t debounceDelay = 50; // Debounce delay
 		uint8_t prevState[6] = {0}; // One for each button
     uint8_t currentState;
-    uint8_t debounceDelay = 50; // Debounce delay
+    uint8_t debounceDelay = 50; // Debounce delay - play with this
 		
 		uint8_t ADCState; //State for potentiometer
 		uint8_t prevADCState = 0; 
 		
-
+		
       while (1) {
     // Loop over each button and check its state
     for (int button = 0; button < 6; button++) {
        switch (button) {
         case 0: currentState = GPIOA->IDR & (1 << 0); break; // Original button
         case 1: currentState = GPIOA->IDR & (1 << 1); break; // Have to check for actual pins on GPIOA
-        case 2: currentState = GPIOA->IDR & (1 << 6); break;
-        case 3: currentState = GPIOA->IDR & (1 << 7); break;
+        case 2: currentState = GPIOC->IDR & (1 << 1); break;
+        case 3: currentState = GPIOC->IDR & (1 << 2); break;
         case 4: currentState = GPIOA->IDR & (1 << 4); break;
         case 5: currentState = GPIOA->IDR & (1 << 5); break;
     }
 
     if (currentState != prevState[button]) {
-        HAL_Delay(debounceDelay); // Debounce
+        HAL_Delay(debounceDelay); // Debounce - Change from HAL delay
         // Recheck state after delay
         switch (button) {
             case 0: currentState = GPIOA->IDR & (1 << 0); break;
             case 1: currentState = GPIOA->IDR & (1 << 1); break; // Repeat for rechecking
-            case 2: currentState = GPIOA->IDR & (1 << 6); break;
-            case 3: currentState = GPIOA->IDR & (1 << 7); break;
+            case 2: currentState = GPIOC->IDR & (1 << 1); break;
+            case 3: currentState = GPIOC->IDR & (1 << 2); break;
             case 4: currentState = GPIOA->IDR & (1 << 4); break;
             case 5: currentState = GPIOA->IDR & (1 << 5); break;
         }
@@ -301,7 +298,7 @@ int main(void)
                     sendMIDI(noteOnCommand, note, velocityOn);
                 } else {
                     // Button released
-                    sendMIDI(noteOffCommand, note, velocityOff);
+                    sendMIDI(noteOnCommand, note, velocityOff);
                 }
             }
         }
@@ -315,9 +312,10 @@ int main(void)
 					prevADCState = ADCState; // Update state
         }
 }
+}
 		
   /* USER CODE END 3 */
-}
+
 
 /**
   * @brief System Clock Configuration
