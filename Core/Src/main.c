@@ -260,7 +260,7 @@ int main(void)
 		
 		uint8_t prevState[6] = {0}; // One for each button
     uint8_t currentState;
-    uint8_t debounceDelay = 50; // Debounce delay - play with this
+    uint8_t debounceDelay = 5; // Debounce delay - play with this
 		
 		uint8_t ADCState; //State for potentiometer
 		uint8_t prevADCState = 0; 
@@ -307,7 +307,7 @@ int main(void)
 
 		//Check to see if potentiometer changed, if it did, send value through MIDI
 		ADCState = (readADC() >> 1); // read state
-        if (ADCState != prevADCState) {
+        if ((ADCState > prevADCState + 1) | (ADCState < prevADCState - 1 )) {
 					sendMIDI(volCommand, volCtrl, ADCState);
 					prevADCState = ADCState; // Update state
         }
