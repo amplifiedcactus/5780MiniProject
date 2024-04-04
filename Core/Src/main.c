@@ -186,6 +186,13 @@ uint32_t readADC(void) {
     return ADC1->DR; // Read ADC value
 }
 
+void addNoteToSequence(int button) {
+	//Add button pressed to sequence, if sequence is full, FIFO
+	
+}
+
+
+
 /* USER CODE END 0 */
 
 /**
@@ -265,7 +272,10 @@ int main(void)
 		uint8_t ADCState; //State for potentiometer
 		uint8_t prevADCState = 0; 
 		
+		int switchMode = 0;
+		while (1) {
 		
+			//Pause mode while loop
       while (1) {
     // Loop over each button and check its state
     for (int button = 0; button < 6; button++) {
@@ -295,7 +305,14 @@ int main(void)
                 int note = NOTE_BUTTON_1 + button; // Assign the note based on button index
                 if (currentState) {
                     // Button pressed
-                    sendMIDI(noteOnCommand, note, velocityOn);
+										if (button == 0) {
+											switchMode = 1;
+											break;
+										}
+										sendMIDI(noteOnCommand, note, velocityOn);
+										addNoteToSequence(button);
+										
+										
                 } else {
                     // Button released
                     sendMIDI(noteOnCommand, note, velocityOff);
@@ -305,12 +322,82 @@ int main(void)
     }
 		
 
-		//Check to see if potentiometer changed, if it did, send value through MIDI
-		ADCState = (readADC() >> 1); // read state
-        if ((ADCState > prevADCState + 1) | (ADCState < prevADCState - 1 )) {
-					sendMIDI(volCommand, volCtrl, ADCState);
-					prevADCState = ADCState; // Update state
-        }
+//		//Check to see if potentiometer changed, if it did, send value through MIDI
+//		ADCState = (readADC() >> 1); // read state
+//        if ((ADCState > prevADCState + 1) | (ADCState < prevADCState - 1 )) {
+//					sendMIDI(volCommand, volCtrl, ADCState);
+//					prevADCState = ADCState; // Update state
+//        }
+//				
+				if (switchMode == 1)
+					break;
+}
+			
+
+
+
+	//Play while loop
+	while (1) {
+		//Code to loop through sequence array
+		
+		
+		
+		//Code to change tempo based on knob value
+		
+		
+		
+		//Code to break out of while loop if button 0 is pressed
+		
+		
+		
+		
+//		
+//    // Loop over each button and check its state
+//    for (int button = 0; button < 6; button++) {
+//       switch (button) {
+//        case 0: currentState = GPIOA->IDR & (1 << 0); break; // Original button
+//        case 1: currentState = GPIOA->IDR & (1 << 1); break; // Have to check for actual pins on GPIOA
+//        case 2: currentState = GPIOC->IDR & (1 << 1); break;
+//        case 3: currentState = GPIOC->IDR & (1 << 2); break;
+//        case 4: currentState = GPIOA->IDR & (1 << 4); break;
+//        case 5: currentState = GPIOA->IDR & (1 << 5); break;
+//    }
+
+//    if (currentState != prevState[button]) {
+//        HAL_Delay(debounceDelay); // Debounce - Change from HAL delay
+//        // Recheck state after delay
+//        switch (button) {
+//            case 0: currentState = GPIOA->IDR & (1 << 0); break;
+//            case 1: currentState = GPIOA->IDR & (1 << 1); break; // Repeat for rechecking
+//            case 2: currentState = GPIOC->IDR & (1 << 1); break;
+//            case 3: currentState = GPIOC->IDR & (1 << 2); break;
+//            case 4: currentState = GPIOA->IDR & (1 << 4); break;
+//            case 5: currentState = GPIOA->IDR & (1 << 5); break;
+//        }
+
+//            if (currentState != prevState[button]) {
+//                prevState[button] = currentState;
+//                int note = NOTE_BUTTON_1 + button; // Assign the note based on button index
+//                if (currentState) {
+//                    // Button pressed
+//                    sendMIDI(noteOnCommand, note, velocityOn);
+//										
+//                } else {
+//                    // Button released
+//                    sendMIDI(noteOnCommand, note, velocityOff);
+//                }
+//            }
+//        }
+//    }
+//		
+
+//		//Check to see if potentiometer changed, if it did, send value through MIDI
+//		ADCState = (readADC() >> 1); // read state
+//        if ((ADCState > prevADCState + 1) | (ADCState < prevADCState - 1 )) {
+//					sendMIDI(volCommand, volCtrl, ADCState);
+//					prevADCState = ADCState; // Update state
+//        }
+}
 }
 }
 		
