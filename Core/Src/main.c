@@ -32,10 +32,15 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+
+//GLOBAL VARIABLES
 char r = 0; //This is for the character typed into the terminal
 int usart_flag = 0; //Flag for if a character has been read by UART3
-
+int sequence[8] = {0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47}; //Sequence array of 8 notes - initialized to chromatic scale
+int sequenceCount = 0; //Integer for counting through sequence array
 int lastCommand = 0; //This variable holds the last transmitted MIDI command for implementing running status
+
+
 // MIDI notes for each button
 #define NOTE_BUTTON_1 0x40 // E3
 #define NOTE_BUTTON_2 0x41 // F3
@@ -66,6 +71,26 @@ void SystemClock_Config(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+//This function sets up the GPIOC pins for using the LEDs
+void setupLED(void) {
+	// Initialize pins PC6 (red), PC7 (blue), PC8 (orange), PC9 (green)
+	// Set to general purpose output mode
+	GPIOC->MODER |= (1 << 18) | (1 << 16) | (1 << 14) | (1 << 12);
+	GPIOC->MODER &= ~((1 << 19) |(1 << 17) |(1 << 15) | (1 << 13));
+	// Set to push pull output type
+	GPIOC->OTYPER &= ~(0x000FF000); //0000 0000 0000 1111 1111 0000 0000 0000
+	// Set to low speed
+	GPIOC->OSPEEDR &= ~(0x000FF000);
+	// Set to no pullup/down resistor
+	GPIOC->PUPDR &= ~(0x000FF000);
+	//To turn on LEDs:
+	//GPIOC->ODR |= (1 << 7); //Turn on blue LED
+	//To toggle LEDs:
+	//GPIOC->ODR ^= (1 << 8); //Toggle orange LED
+	//To turn off LEDs:
+	//GPIOC->ODR &= ~(1 << 6); //Turn off red LED
+	//GPIOC->ODR &= ~((1 << 6) | (1 << 7) | (1 << 8) | (1 << 9));
+}
 
 void setupUART3(void) {
 	
@@ -186,9 +211,25 @@ uint32_t readADC(void) {
     return ADC1->DR; // Read ADC value
 }
 
+//This function adds notes to the sequence array
 void addNoteToSequence(int button) {
-	//Add button pressed to sequence, if sequence is full, FIFO
+	//TODO: Add button pressed to sequence, if sequence is full, FIFO
 	
+}
+
+
+//Timer 2 interrupt handler for sequencer
+void TIM2_IRQHandler(void) {
+	//Send sequence note to MIDI interface
+	sendMIDI(0x90, sequence[sequenceCount], 0x40);
+	
+	//Add to sequence count, if it is 8, go back to 0
+	sequenceCount = sequenceCount + 1;
+	if (sequenceCount > 7)
+		sequenceCount = 0;
+	
+	NVIC->ICPR[0U]	|= (1 << 0); //clear NVIC pending flag
+	TIM2->SR &= ~(1 << 0); //clear update interrupt flag
 }
 
 
@@ -237,17 +278,24 @@ int main(void)
 	RCC->AHBENR |= RCC_AHBENR_GPIOAEN; // Enable peripheral clock to GPIOA
 	RCC->AHBENR |= RCC_AHBENR_GPIOBEN; // Enable peripheral clock to GPIOA
 	RCC->APB1ENR |= RCC_APB1ENR_USART3EN; // Enable peripheral clock to USART3
+	RCC->APB1ENR |= RCC_APB1ENR_TIM2EN; //Enable peripheral clock to Timer 2
 	
 	setupUART3();
 	setupADC();
+	setupLED();
 	
 	
 	GPIOA->PUPDR |= 0xAAA8;
 	GPIOC->PUPDR |= (1 << 3) | (1 << 5);
 	GPIOB->MODER &= ~0xF;
 	GPIOB->OTYPER &= ~0x3;
-
 	
+	//set up timer 2
+	TIM2->PSC = 7999; //Set PSC to 7999 to Set frequency to 4Hz 
+	TIM2->ARR = 250; //Set auto-reload register to 250 to set frequency to 4Hz
+	TIM2->DIER |= (1 << 0); //Enable Update interrupt
+	TIM2->CR1 |= (1 << 0); //Set CEN bit to enable counter
+
 	
 	//Initialize 4 byte array for note on command
 	//Most significant byte is command, then channel, then note, then velocity
@@ -256,149 +304,109 @@ int main(void)
 	int note = 0x40;
 	int velocityOn = 0x40;
 	int velocityOff = 0x00;
-	
 	int volCommand = 0xB0;
 	int volCtrl = 0x07;
 	
+	uint32_t debouncer = 0; //Debouncer variable for button 0
+
+		
+	//Variables for debouncing code
+	uint8_t prevState[6] = {0}; // One for each button
+	uint8_t currentState;
+	uint8_t debounceDelay = 5; // Debounce delay - play with this
+	uint8_t ADCState; //State for potentiometer
+	uint8_t prevADCState = 0; 
 	
-		
-		
-		
-		
-		uint8_t prevState[6] = {0}; // One for each button
-    uint8_t currentState;
-    uint8_t debounceDelay = 5; // Debounce delay - play with this
-		
-		uint8_t ADCState; //State for potentiometer
-		uint8_t prevADCState = 0; 
-		
-		int switchMode = 0;
-		while (1) {
-		
-			//Pause mode while loop
-      while (1) {
-    // Loop over each button and check its state
-    for (int button = 0; button < 6; button++) {
-       switch (button) {
-        case 0: currentState = GPIOA->IDR & (1 << 0); break; // Original button
-        case 1: currentState = GPIOA->IDR & (1 << 1); break; // Have to check for actual pins on GPIOA
-        case 2: currentState = GPIOC->IDR & (1 << 1); break;
-        case 3: currentState = GPIOC->IDR & (1 << 2); break;
-        case 4: currentState = GPIOA->IDR & (1 << 4); break;
-        case 5: currentState = GPIOA->IDR & (1 << 5); break;
-    }
 
-    if (currentState != prevState[button]) {
-        HAL_Delay(debounceDelay); // Debounce - Change from HAL delay
-        // Recheck state after delay
-        switch (button) {
-            case 0: currentState = GPIOA->IDR & (1 << 0); break;
-            case 1: currentState = GPIOA->IDR & (1 << 1); break; // Repeat for rechecking
-            case 2: currentState = GPIOC->IDR & (1 << 1); break;
-            case 3: currentState = GPIOC->IDR & (1 << 2); break;
-            case 4: currentState = GPIOA->IDR & (1 << 4); break;
-            case 5: currentState = GPIOA->IDR & (1 << 5); break;
-        }
-
-            if (currentState != prevState[button]) {
-                prevState[button] = currentState;
-                int note = NOTE_BUTTON_1 + button; // Assign the note based on button index
-                if (currentState) {
-                    // Button pressed
-										if (button == 0) {
-											switchMode = 1;
-											break;
-										}
-										sendMIDI(noteOnCommand, note, velocityOn);
-										addNoteToSequence(button);
-										
-										
-                } else {
-                    // Button released
-                    sendMIDI(noteOnCommand, note, velocityOff);
-                }
-            }
-        }
-    }
-		
-
-//		//Check to see if potentiometer changed, if it did, send value through MIDI
-//		ADCState = (readADC() >> 1); // read state
-//        if ((ADCState > prevADCState + 1) | (ADCState < prevADCState - 1 )) {
-//					sendMIDI(volCommand, volCtrl, ADCState);
-//					prevADCState = ADCState; // Update state
-//        }
-//				
-				if (switchMode == 1)
-					break;
-}
-			
-
-
-
-	//Play while loop
+	int switchMode = 0; //This is used to break out of two loops to go to Play mode
+	
+	//Main infinite while loop
 	while (1) {
-		//Code to loop through sequence array
 		
-		
-		
-		//Code to change tempo based on knob value
-		
-		
-		
-		//Code to break out of while loop if button 0 is pressed
-		
-		
-		
-		
-//		
-//    // Loop over each button and check its state
-//    for (int button = 0; button < 6; button++) {
-//       switch (button) {
-//        case 0: currentState = GPIOA->IDR & (1 << 0); break; // Original button
-//        case 1: currentState = GPIOA->IDR & (1 << 1); break; // Have to check for actual pins on GPIOA
-//        case 2: currentState = GPIOC->IDR & (1 << 1); break;
-//        case 3: currentState = GPIOC->IDR & (1 << 2); break;
-//        case 4: currentState = GPIOA->IDR & (1 << 4); break;
-//        case 5: currentState = GPIOA->IDR & (1 << 5); break;
-//    }
+		//Pause mode while loop
+		while (1) {
+			GPIOC->ODR &= ~((1 << 6) | (1 << 7) | (1 << 8) | (1 << 9)); //turn off other LEDs
+			GPIOC->ODR |= (1 << 6); //Turn on red LED to show that Pause mode is active
+			
+			NVIC_DisableIRQ (TIM2_IRQn); //disable NVIC interrupt to stop sequencer
 
-//    if (currentState != prevState[button]) {
-//        HAL_Delay(debounceDelay); // Debounce - Change from HAL delay
-//        // Recheck state after delay
-//        switch (button) {
-//            case 0: currentState = GPIOA->IDR & (1 << 0); break;
-//            case 1: currentState = GPIOA->IDR & (1 << 1); break; // Repeat for rechecking
-//            case 2: currentState = GPIOC->IDR & (1 << 1); break;
-//            case 3: currentState = GPIOC->IDR & (1 << 2); break;
-//            case 4: currentState = GPIOA->IDR & (1 << 4); break;
-//            case 5: currentState = GPIOA->IDR & (1 << 5); break;
-//        }
+			
+			// Loop over each button and check its state
+			for (int button = 0; button < 6; button++) {
+				 switch (button) {
+					case 0: currentState = GPIOA->IDR & (1 << 0); break; // Original button
+					case 1: currentState = GPIOA->IDR & (1 << 1); break; // Have to check for actual pins on GPIOA
+					case 2: currentState = GPIOC->IDR & (1 << 1); break;
+					case 3: currentState = GPIOC->IDR & (1 << 2); break;
+					case 4: currentState = GPIOA->IDR & (1 << 4); break;
+					case 5: currentState = GPIOA->IDR & (1 << 5); break;
+				}
+				if (currentState != prevState[button]) {
+					HAL_Delay(debounceDelay); // Debounce - Change from HAL delay
+					// Recheck state after delay
+					switch (button) {
+							case 0: currentState = GPIOA->IDR & (1 << 0); break;
+							case 1: currentState = GPIOA->IDR & (1 << 1); break; // Repeat for rechecking
+							case 2: currentState = GPIOC->IDR & (1 << 1); break;
+							case 3: currentState = GPIOC->IDR & (1 << 2); break;
+							case 4: currentState = GPIOA->IDR & (1 << 4); break;
+							case 5: currentState = GPIOA->IDR & (1 << 5); break;
+					}
+					if (currentState != prevState[button]) {
+						prevState[button] = currentState;
+						int note = NOTE_BUTTON_1 + button; // Assign the note based on button index
+						if (currentState) {
+								// Button pressed
+								if (button == 0) {
+									switchMode = 1;
+									break;
+								}
+								sendMIDI(noteOnCommand, note, velocityOn);
+								addNoteToSequence(button);
+						} 
+						else {
+								// Button released
+								sendMIDI(noteOnCommand, note, velocityOff);
+						}
+					}
+				}
+			}
+			if (switchMode == 1){
+				switchMode = 0;
+				break;
+			}
+		}
 
-//            if (currentState != prevState[button]) {
-//                prevState[button] = currentState;
-//                int note = NOTE_BUTTON_1 + button; // Assign the note based on button index
-//                if (currentState) {
-//                    // Button pressed
-//                    sendMIDI(noteOnCommand, note, velocityOn);
-//										
-//                } else {
-//                    // Button released
-//                    sendMIDI(noteOnCommand, note, velocityOff);
-//                }
-//            }
-//        }
-//    }
-//		
+		//Play while loop
+		while (1) {
+			GPIOC->ODR &= ~((1 << 6) | (1 << 7) | (1 << 8) | (1 << 9)); //turn off other LEDs
+			GPIOC->ODR |= (1 << 9); //Turn on green LED to show that play mode is active
+			
+			NVIC_EnableIRQ (TIM2_IRQn); //enable NVIC interrupt for sequencer
+			NVIC_SetPriority (TIM2_IRQn, 3); //set EXTI0 interrupt priority to 3
 
-//		//Check to see if potentiometer changed, if it did, send value through MIDI
-//		ADCState = (readADC() >> 1); // read state
-//        if ((ADCState > prevADCState + 1) | (ADCState < prevADCState - 1 )) {
-//					sendMIDI(volCommand, volCtrl, ADCState);
-//					prevADCState = ADCState; // Update state
-//        }
-}
-}
+			//TODO: Add code to change tempo based on knob value, make sure if someone turns the knob in pause mode it still works
+			
+			
+			
+			
+			//Break out of while loop if button 0 is pressed:
+			debouncer = (debouncer << 1); // Always shift every loop iteration
+			if (GPIOA->IDR & (1 << 0)) { // If input signal is set/high
+			debouncer |= 0x01; // Set lowest bit of bit-vector
+			}
+			if (debouncer == 0xFFFFFFFF) {
+			// This code triggers repeatedly when button is steady high!
+			}
+			if (debouncer == 0x00000000) {
+			// This code triggers repeatedly when button is steady low!
+			}
+			if (debouncer == 0x7FFFFFFF) {
+			// This code triggers only once when transitioning to steady high!
+				break;
+			}
+		}
+	}
 }
 		
   /* USER CODE END 3 */
