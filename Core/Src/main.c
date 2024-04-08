@@ -1,3 +1,4 @@
+
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
@@ -48,7 +49,7 @@ int lastCommand = 0; //This variable holds the last transmitted MIDI command for
 #define NOTE_BUTTON_4 0x43 // G3
 #define NOTE_BUTTON_5 0x44 // G#3(Ab3)
 #define NOTE_BUTTON_6 0x45 // A3
-
+int noteMapping[6] = {NOTE_BUTTON_1, NOTE_BUTTON_2, NOTE_BUTTON_3, NOTE_BUTTON_4, NOTE_BUTTON_5, NOTE_BUTTON_6}; //array to map button indices to MIDI note values
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -210,12 +211,32 @@ uint32_t readADC(void) {
     while (!(ADC1->ISR & ADC_ISR_EOC)) {}
     return ADC1->DR; // Read ADC value
 }
+//visual feedback to ensure that pressing buttons actaully adds the notes to the sequence
+void turnOnOrangeLED(void) {
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, GPIO_PIN_SET);  // Turn on the LED by setting the pin high
+}
 
+void turnOffOrangeLED(void) {
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, GPIO_PIN_RESET);  // Turn off the LED by setting the pin low
+}
 //This function adds notes to the sequence array
 void addNoteToSequence(int button) {
 	//TODO: Add button pressed to sequence, if sequence is full, FIFO
-	
+  
+    if (button >= 0 && button < sizeof(noteMapping) / sizeof(noteMapping[0])) { //check if the button index is within the array of note mapping
+        int noteValue = noteMapping[button]; //fetch note values
+        sequence[sequenceCount] = noteValue;
+        sequenceCount = (sequenceCount + 1) % 8; //ensuring it stays within the sequence array, 8 in our case
+
+        // Visual feedback: Blink the orange LED
+        turnOnOrangeLED();
+        HAL_Delay(5);  
+        turnOffOrangeLED();
+    }
 }
+
+
+
 
 
 //Timer 2 interrupt handler for sequencer
