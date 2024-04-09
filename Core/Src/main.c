@@ -234,9 +234,27 @@ void addNoteToSequence(int button) {
         turnOffOrangeLED();
     }
 }
+// Function to map ADC value to timer period
+//actual tempo range for MIDI is 40 beats per minute to 240 BPM
+uint32_t mapADCToTimerPeriod(uint8_t adcValue) {
+    uint32_t minTempo = 40; // Minimum tempo in BPM
+    uint32_t maxTempo = 240; // Maximum tempo in BPM
+    uint32_t minPeriod = 60000 / maxTempo; // Calculate minimum period (ms) based on maximum tempo
+    uint32_t maxPeriod = 60000 / minTempo; // Calculate maximum period (ms) based on minimum tempo
+    
+    // Map ADC value to tempo period
+    return ((uint32_t)(adcValue) * (maxPeriod - minPeriod) / 255) + minPeriod;
+}
 
 
-
+ void adjustTempo() {
+    uint8_t adcValue = readADC(); // Read the current ADC value from the potentiometer
+    uint32_t timerPeriod = mapADCToTimerPeriod(adcValue); // Map ADC value to timer period
+    
+    // Adjust the Timer's period (ARR register) based on the calculated timer period
+    uint32_t timerTicks = (timerPeriod * (HAL_RCC_GetHCLKFreq() / 1000)) / (TIM2->PSC + 1);
+    TIM2->ARR = timerTicks - 1; // Update Timer's Auto-Reload Register to change the tempo
+}
 
 
 //Timer 2 interrupt handler for sequencer
@@ -403,11 +421,12 @@ int main(void)
 			GPIOC->ODR &= ~((1 << 6) | (1 << 7) | (1 << 8) | (1 << 9)); //turn off other LEDs
 			GPIOC->ODR |= (1 << 9); //Turn on green LED to show that play mode is active
 			
+				//TODO: Add code to change tempo based on knob value, make sure if someone turns the knob in pause mode it still works
+			 adjustTempo(); // Adjust tempo based on potentiometer
+			
 			NVIC_EnableIRQ (TIM2_IRQn); //enable NVIC interrupt for sequencer
 			NVIC_SetPriority (TIM2_IRQn, 3); //set EXTI0 interrupt priority to 3
 
-			//TODO: Add code to change tempo based on knob value, make sure if someone turns the knob in pause mode it still works
-			
 			
 			
 			
