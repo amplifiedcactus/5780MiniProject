@@ -1,4 +1,5 @@
 
+
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
@@ -54,6 +55,14 @@ int noteMapping[6] = {NOTE_BUTTON_1, NOTE_BUTTON_2, NOTE_BUTTON_3, NOTE_BUTTON_4
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
+#define TIMER_CLOCK 8000000U
+#define PRESCALAR 8000U
+#define BPM_MAX 240U
+#define BPM_MIN 40U
+#define MIN_PERIOD_MS (60000 / BPM_MAX) // Minimum period in ms
+#define MAX_PERIOD_MS (60000 / BPM_MIN) // Maximum period in ms
+#define ADC_READINGS_COUNT 10
+
 
 /* USER CODE END PM */
 
@@ -203,13 +212,26 @@ void setupADC(void) {
 	//start ADC by setting ADSTART bit
 	ADC1->CR |= (1 << 2);
 }
-
+void setupTimer(void) {
+    TIM2->PSC = PRESCALAR - 1; // Adjusted Prescalar for 8MHz clock to achieve 1 ms tick rate
+    TIM2->ARR = 0xFFFFFFFF; // Max auto-reload value for maximum flexibility
+    TIM2->CR1 |= TIM_CR1_CEN; // Enable the timer
+	TIM2->DIER |= (1 << 0); //Enable Update interrupt
+}
 uint32_t readADC(void) {
     // Start ADC conversion
     ADC1->CR |= ADC_CR_ADSTART;
     // Wait for conversion to complete
     while (!(ADC1->ISR & ADC_ISR_EOC)) {}
     return ADC1->DR; // Read ADC value
+}
+uint32_t readAverageADC(void) {
+    uint32_t sum = 0;
+    for (int i = 0; i < ADC_READINGS_COUNT; i++) {
+        sum += readADC();
+        HAL_Delay(1); 
+    }
+    return sum / ADC_READINGS_COUNT;
 }
 //visual feedback to ensure that pressing buttons actaully adds the notes to the sequence
 void turnOnOrangeLED(void) {
@@ -234,29 +256,20 @@ void addNoteToSequence(int button) {
         turnOffOrangeLED();
     }
 }
-// Function to map ADC value to timer period
-//actual tempo range for MIDI is 40 beats per minute to 240 BPM
 uint32_t mapADCToTimerPeriod(uint8_t adcValue) {
-    uint32_t minTempo = 40; // Minimum tempo in BPM
-    uint32_t maxTempo = 240; // Maximum tempo in BPM
-    uint32_t minPeriod = 60000 / maxTempo; // Calculate minimum period (ms) based on maximum tempo
-    uint32_t maxPeriod = 60000 / minTempo; // Calculate maximum period (ms) based on minimum tempo
-    
-    // Map ADC value to tempo period
-    return ((uint32_t)(adcValue) * (maxPeriod - minPeriod) / 255) + minPeriod;
+    uint32_t timerPeriodMs = ((uint32_t)(adcValue) * (MAX_PERIOD_MS - MIN_PERIOD_MS) / 255) + MIN_PERIOD_MS;
+    return timerPeriodMs;
 }
 
+void adjustTempo(void) {
+    uint8_t adcValue = readAverageADC();
+    uint32_t timerPeriodMs = mapADCToTimerPeriod(adcValue);
+    uint32_t timerTicks = (TIMER_CLOCK / 1000) * timerPeriodMs / PRESCALAR;
 
- void adjustTempo() {
-    uint8_t adcValue = readADC(); // Read the current ADC value from the potentiometer
-    uint32_t timerPeriod = mapADCToTimerPeriod(adcValue); // Map ADC value to timer period
-    
-    // Adjust the Timer's period (ARR register) based on the calculated timer period
-    uint32_t timerTicks = (timerPeriod * (HAL_RCC_GetHCLKFreq() / 1000)) / (TIM2->PSC + 1);
-    TIM2->ARR = timerTicks - 1; // Update Timer's Auto-Reload Register to change the tempo
+    if (timerTicks > 0 && timerTicks < 0xFFFFFFFF) {
+        TIM2->ARR = timerTicks - 1; // Update the auto-reload value
+    }
 }
-
-
 //Timer 2 interrupt handler for sequencer
 void TIM2_IRQHandler(void) {
 	//Send sequence note to MIDI interface
@@ -330,10 +343,10 @@ int main(void)
 	GPIOB->OTYPER &= ~0x3;
 	
 	//set up timer 2
-	TIM2->PSC = 7999; //Set PSC to 7999 to Set frequency to 4Hz 
-	TIM2->ARR = 250; //Set auto-reload register to 250 to set frequency to 4Hz
-	TIM2->DIER |= (1 << 0); //Enable Update interrupt
-	TIM2->CR1 |= (1 << 0); //Set CEN bit to enable counter
+//	TIM2->PSC = 7999; //Set PSC to 7999 to Set frequency to 4Hz 
+//	TIM2->ARR = 250; //Set auto-reload register to 250 to set frequency to 4Hz
+//	TIM2->DIER |= (1 << 0); //Enable Update interrupt
+//	TIM2->CR1 |= (1 << 0); //Set CEN bit to enable counter
 
 	
 	//Initialize 4 byte array for note on command
@@ -422,10 +435,10 @@ int main(void)
 			GPIOC->ODR |= (1 << 9); //Turn on green LED to show that play mode is active
 			
 				//TODO: Add code to change tempo based on knob value, make sure if someone turns the knob in pause mode it still works
-			 adjustTempo(); // Adjust tempo based on potentiometer
+		
 			
 			NVIC_EnableIRQ (TIM2_IRQn); //enable NVIC interrupt for sequencer
-			NVIC_SetPriority (TIM2_IRQn, 3); //set EXTI0 interrupt priority to 3
+			NVIC_SetPriority (TIM2_IRQn, 1); //set EXTI0 interrupt priority to 3
 
 			
 			
