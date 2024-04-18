@@ -38,6 +38,7 @@
 char r = 0; //This is for the character typed into the terminal
 int usart_flag = 0; //Flag for if a character has been read by UART3
 int sequence[8] = {0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47}; //Sequence array of 8 notes - initialized to chromatic scale
+int velocityArray[8] = {0};
 int sequenceCount = 0; //Integer for counting through sequence array
 int lastCommand = 0; //This variable holds the last transmitted MIDI command for implementing running status
 
@@ -220,12 +221,13 @@ void turnOffOrangeLED(void) {
     HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, GPIO_PIN_RESET);  // Turn off the LED by setting the pin low
 }
 //This function adds notes to the sequence array
-void addNoteToSequence(int button) {
+void addNoteToSequence(int button, int velocity) {
 	//TODO: Add button pressed to sequence, if sequence is full, FIFO
   
     if (button >= 0 && button < sizeof(noteMapping) / sizeof(noteMapping[0])) { //check if the button index is within the array of note mapping
         int noteValue = noteMapping[button]; //fetch note values
         sequence[sequenceCount] = noteValue;
+				velocityArray[sequenceCount] = velocity;
         sequenceCount = (sequenceCount + 1) % 8; //ensuring it stays within the sequence array, 8 in our case
 
         // Visual feedback: Blink the orange LED
@@ -240,7 +242,7 @@ void addNoteToSequence(int button) {
 //Timer 2 interrupt handler for sequencer
 void TIM2_IRQHandler(void) {
 	//Send sequence note to MIDI interface
-	sendMIDI(0x90, sequence[sequenceCount], 0x40);
+	sendMIDI(0x90, sequence[sequenceCount], velocityArray[sequenceCount]);
 	
 	//Add to sequence count, if it is 8, go back to 0
 	sequenceCount = sequenceCount + 1;
@@ -386,7 +388,7 @@ int main(void)
 									break;
 								}
 								sendMIDI(noteOnCommand, note, velocityOn);
-								addNoteToSequence(button);
+								addNoteToSequence(button, readADC()/4);
 						} 
 						else {
 								// Button released
@@ -395,6 +397,14 @@ int main(void)
 					}
 				}
 			}
+			 
+			
+			//read ADC and change velocity
+			
+			velocityOn = readADC()/4;
+			
+			
+			
 			if (switchMode == 1){
 				switchMode = 0;
 				break;
@@ -412,6 +422,11 @@ int main(void)
 			NVIC_EnableIRQ (TIM2_IRQn); //enable NVIC interrupt for sequencer
 			NVIC_SetPriority (TIM2_IRQn, 3); //set EXTI0 interrupt priority to 3
 
+			//Detect when a button is pressed, if it h
+			
+			
+			
+			
 			
 			
 			
