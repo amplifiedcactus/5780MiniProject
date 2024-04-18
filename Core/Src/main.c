@@ -396,6 +396,14 @@ int main(void)
 				}
 			}
 			if (switchMode == 1){
+				//change velocity in pause mode
+				//if (button == 0){
+				  //   sendMIDI(noteOnCommand, note, velocityOff);
+				       //}
+				//else {
+				// sendMIDI(noteOnCommand, note, velocityOn);
+		                   //	}
+				
 				switchMode = 0;
 				break;
 			}
