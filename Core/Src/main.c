@@ -28,6 +28,11 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+typedef struct {
+    int note;
+    int velocity;
+    uint32_t duration; // Duration in milliseconds
+} NoteInfo;
 
 /* USER CODE END PTD */
 
@@ -37,12 +42,13 @@
 //GLOBAL VARIABLES
 char r = 0; //This is for the character typed into the terminal
 int usart_flag = 0; //Flag for if a character has been read by UART3
-int sequence[8] = {0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47}; //Sequence array of 8 notes - initialized to chromatic scale
+//int sequence[8] = {0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47}; //Sequence array of 8 notes - initialized to chromatic scale
 int velocityArray[8] = {0};
 int sequenceCount = 0; //Integer for counting through sequence array
 int lastCommand = 0; //This variable holds the last transmitted MIDI command for implementing running status
-
-
+NoteInfo sequence[8]; //Sequence array of 8 notes - modified to include NoteInfo
+uint32_t pressTime[6];  // Store press times for each button
+uint32_t releaseTime[6]; // Store release times for each button
 // MIDI notes for each button
 #define NOTE_BUTTON_1 0x40 // E3
 #define NOTE_BUTTON_2 0x41 // F3
@@ -52,6 +58,7 @@ int lastCommand = 0; //This variable holds the last transmitted MIDI command for
 #define NOTE_BUTTON_6 0x45 // A3
 int noteMapping[6] = {NOTE_BUTTON_1, NOTE_BUTTON_2, NOTE_BUTTON_3, NOTE_BUTTON_4, NOTE_BUTTON_5, NOTE_BUTTON_6}; //array to map button indices to MIDI note values
 /* USER CODE END PD */
+
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
@@ -221,19 +228,13 @@ void turnOffOrangeLED(void) {
     HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, GPIO_PIN_RESET);  // Turn off the LED by setting the pin low
 }
 //This function adds notes to the sequence array
-void addNoteToSequence(int button, int velocity) {
+void addNoteToSequence(int button, int velocity, uint32_t duration) {
 	//TODO: Add button pressed to sequence, if sequence is full, FIFO
-  
-    if (button >= 0 && button < sizeof(noteMapping) / sizeof(noteMapping[0])) { //check if the button index is within the array of note mapping
-        int noteValue = noteMapping[button]; //fetch note values
-        sequence[sequenceCount] = noteValue;
-				velocityArray[sequenceCount] = velocity;
-        sequenceCount = (sequenceCount + 1) % 8; //ensuring it stays within the sequence array, 8 in our case
-
-        // Visual feedback: Blink the orange LED
-        turnOnOrangeLED();
-        HAL_Delay(5);  
-        turnOffOrangeLED();
+  if (button >= 0 && button < sizeof(noteMapping) / sizeof(noteMapping[0])) {
+        sequence[sequenceCount].note = noteMapping[button];
+        sequence[sequenceCount].velocity = velocity;
+        sequence[sequenceCount].duration = duration;
+        sequenceCount = (sequenceCount + 1) % 8;
     }
 }
 
@@ -242,13 +243,17 @@ void addNoteToSequence(int button, int velocity) {
 //Timer 2 interrupt handler for sequencer
 void TIM2_IRQHandler(void) {
 	//Send sequence note to MIDI interface
-	sendMIDI(0x90, sequence[sequenceCount], velocityArray[sequenceCount]);
-	
+	//sendMIDI(0x90, sequence[sequenceCount], velocityArray[sequenceCount]);
+	if (sequence[sequenceCount].note != 0) {
+        sendMIDI(0x90, sequence[sequenceCount].note, sequence[sequenceCount].velocity);
+        HAL_Delay(sequence[sequenceCount].duration);  // Play the note for its duration
+        sendMIDI(0x80, sequence[sequenceCount].note, 0);  // Note off
+    }
 	//Add to sequence count, if it is 8, go back to 0
-	sequenceCount = sequenceCount + 1;
-	if (sequenceCount > 7)
-		sequenceCount = 0;
-	
+//	sequenceCount = sequenceCount + 1;
+//	if (sequenceCount > 7)
+//		sequenceCount = 0;
+	 sequenceCount = (sequenceCount + 1) % 8;
 	
 	int read = readADC();
 	if (read > 0)
@@ -382,18 +387,15 @@ int main(void)
 						prevState[button] = currentState;
 						int note = NOTE_BUTTON_1 + button; // Assign the note based on button index
 						if (currentState) {
-								// Button pressed
-								if (button == 0) {
-									switchMode = 1;
-									break;
-								}
-								sendMIDI(noteOnCommand, note, velocityOn);
-								addNoteToSequence(button, readADC()/4);
-						} 
-						else {
-								// Button released
-								sendMIDI(noteOnCommand, note, velocityOff);
-						}
+                prevState[button] = currentState;
+                if (currentState) {
+                    pressTime[button] = HAL_GetTick();  // Record press time
+                } else {
+                    releaseTime[button] = HAL_GetTick();  // Record release time
+                    uint32_t duration = releaseTime[button] - pressTime[button];
+                    addNoteToSequence(button, readADC()/4, duration);  // Store note with duration
+                }
+            }
 					}
 				}
 			}
@@ -530,4 +532,3 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
-
