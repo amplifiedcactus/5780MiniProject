@@ -31,10 +31,10 @@ SOFTWARE DESCRIPTION:
 
 There are 4 main sections of the software:
 
-Initialization: Setup of the USART3 (MIDI output), ADC (potentiometer input), GPIO (pushbuttons), and Timer 2 (sequencer) occurs in this section.
-Pause Mode While Loop: In this while loop, button presses are read, output to the MIDI interface, and added to the sequence. The potentiometer value is also read for the velocity value. The timer 2 interrupt is also disabled to stop the sequencer if it was previously in play mode.
-Play Mode While Loop: In this while loop, the timer 2 interrupt is enabled.
-Timer 2 Interrupt Handler: When the timer 2 count reaches its set ARR value, the counter resets and the interrupt handler is executed. In this interrupt handler, the sequence notes are sent to the MIDI interface from the sequence array, and the timer 2 ARR value is updated based on the potentiometer value to adjust tempo of the sequence playback.
+- Initialization: Setup of the USART3 (MIDI output), ADC (potentiometer input), GPIO (pushbuttons), and Timer 2 (sequencer) occurs in this section.
+- Pause Mode While Loop: In this while loop, button presses are read, output to the MIDI interface, and added to the sequence. The potentiometer value is also read for the velocity value. The timer 2 interrupt is also disabled to stop the sequencer if it was previously in play mode.
+- Play Mode While Loop: In this while loop, the timer 2 interrupt is enabled.
+- Timer 2 Interrupt Handler: When the timer 2 count reaches its set ARR value, the counter resets and the interrupt handler is executed. In this interrupt handler, the sequence notes are sent to the MIDI interface from the sequence array, and the timer 2 ARR value is updated based on the potentiometer value to adjust tempo of the sequence playback.
 
 
 <img width="556" alt="image" src="https://github.com/amplifiedcactus/5780MiniProject/assets/153122872/2fe406e5-995e-441f-986f-701c950c79f8">
