@@ -40,6 +40,7 @@ int usart_flag = 0; //Flag for if a character has been read by UART3
 int sequence[8] = {0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47}; //Sequence array of 8 notes - initialized to chromatic scale
 int velocityArray[8] = {0};
 int sequenceCount = 0; //Integer for counting through sequence array
+int sequenceCount16 = 0; //Integer for counting through sequence array
 int lastCommand = 0; //This variable holds the last transmitted MIDI command for implementing running status
 
 
@@ -135,14 +136,14 @@ void sendMIDI(int x, int y, int z) {
 	
 	
 	//If last command is not same as previous (running status), send command once transmit register is empty
-	if (x != lastCommand) {
+	//if (x != lastCommand) {
 		while (1) {
 			if (USART3->ISR & (1 << 7)) {
 				break;
 			}
 		}
 		USART3->TDR = x;
-	}
+	//}
 	
 	//send note once transmit register is empty
 	while (1) {
@@ -161,7 +162,7 @@ void sendMIDI(int x, int y, int z) {
 	USART3->TDR = z;
 	
 	//update last command variable
-	lastCommand = x;
+	//lastCommand = x;
 }
 
 //This is the USART3 interrupt handler that puts the read character into char r and sets the usart_flag
@@ -213,13 +214,13 @@ uint32_t readADC(void) {
     return ADC1->DR; // Read ADC value
 }
 //visual feedback to ensure that pressing buttons actaully adds the notes to the sequence
-void turnOnOrangeLED(void) {
-    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, GPIO_PIN_SET);  // Turn on the LED by setting the pin high
-}
+//void turnOnOrangeLED(void) {
+//    GPIOC->ODR |= (1 << 8); //Toggle orange LED  // Turn on the LED by setting the pin high
+//}
 
-void turnOffOrangeLED(void) {
-    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, GPIO_PIN_RESET);  // Turn off the LED by setting the pin low
-}
+//void turnOffOrangeLED(void) {
+//    GPIOC->ODR &= ~(1 << 8);  // Turn off the LED by setting the pin low
+//}
 //This function adds notes to the sequence array
 void addNoteToSequence(int button, int velocity) {
 	//TODO: Add button pressed to sequence, if sequence is full, FIFO
@@ -231,9 +232,9 @@ void addNoteToSequence(int button, int velocity) {
         sequenceCount = (sequenceCount + 1) % 8; //ensuring it stays within the sequence array, 8 in our case
 
         // Visual feedback: Blink the orange LED
-        turnOnOrangeLED();
-        HAL_Delay(5);  
-        turnOffOrangeLED();
+        //turnOnOrangeLED();
+        //HAL_Delay(5);  
+        //turnOffOrangeLED();
     }
 }
 
@@ -242,17 +243,21 @@ void addNoteToSequence(int button, int velocity) {
 //Timer 2 interrupt handler for sequencer
 void TIM2_IRQHandler(void) {
 	//Send sequence note to MIDI interface
-	sendMIDI(0x90, sequence[sequenceCount], velocityArray[sequenceCount]);
+	//if sequence count is even, send note on command. If it is odd, send note off command
+	if (sequenceCount16 % 2)
+		sendMIDI(0x90, sequence[sequenceCount16/2], velocityArray[sequenceCount16/2]);
+	else
+		sendMIDI(0x90, sequence[(sequenceCount16-1)/2], 0);
 	
-	//Add to sequence count, if it is 8, go back to 0
-	sequenceCount = sequenceCount + 1;
-	if (sequenceCount > 7)
-		sequenceCount = 0;
+	//Add to sequence count, if it is 16, go back to 0
 	
+	if (sequenceCount16 > 15)
+		sequenceCount16 = 0;
+	sequenceCount16 = sequenceCount16 + 1;
 	
 	int read = readADC();
 	if (read > 0)
-		TIM2->ARR = read*3;
+		TIM2->ARR = read*2;
 	
 	NVIC->ICPR[0U]	|= (1 << 0); //clear NVIC pending flag
 	TIM2->SR &= ~(1 << 0); //clear update interrupt flag
