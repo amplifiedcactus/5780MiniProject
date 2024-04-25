@@ -37,8 +37,8 @@
 //GLOBAL VARIABLES
 char r = 0; //This is for the character typed into the terminal
 int usart_flag = 0; //Flag for if a character has been read by UART3
-int sequence[8] = {0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47}; //Sequence array of 8 notes - initialized to chromatic scale
-int velocityArray[8] = {0};
+int sequence[8] = {60, 60, 60, 60, 60, 60, 60, 60}; //Sequence array of 8 notes - initialized to chromatic scale
+int velocityArray[8] = {0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40};
 int sequenceCount = 0; //Integer for counting through sequence array
 int sequenceCount16 = 0; //Integer for counting through sequence array
 int lastCommand = 0; //This variable holds the last transmitted MIDI command for implementing running status
@@ -46,12 +46,12 @@ int lastCommand = 0; //This variable holds the last transmitted MIDI command for
 
 // MIDI notes for each button
 #define NOTE_BUTTON_1 0x40 // E3
-#define NOTE_BUTTON_2 0x41 // F3
-#define NOTE_BUTTON_3 0x42 // F#3(Gb3)
-#define NOTE_BUTTON_4 0x43 // G3
-#define NOTE_BUTTON_5 0x44 // G#3(Ab3)
-#define NOTE_BUTTON_6 0x45 // A3
-int noteMapping[6] = {NOTE_BUTTON_1, NOTE_BUTTON_2, NOTE_BUTTON_3, NOTE_BUTTON_4, NOTE_BUTTON_5, NOTE_BUTTON_6}; //array to map button indices to MIDI note values
+#define NOTE_BUTTON_2 0x36 // F3
+#define NOTE_BUTTON_3 0x38 // F#3(Gb3)
+#define NOTE_BUTTON_4 0x40 // G3
+#define NOTE_BUTTON_5 0x46 // G#3(Ab3)
+#define NOTE_BUTTON_6 0x48 // A3
+int noteMapping[6] = {0x3C, 60, 62, 64, 67, 69}; //array to map button indices to MIDI note values
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -392,12 +392,12 @@ int main(void)
 									switchMode = 1;
 									break;
 								}
-								sendMIDI(noteOnCommand, note, velocityOn);
+								sendMIDI(noteOnCommand, noteMapping[button], velocityOn);
 								addNoteToSequence(button, readADC()/4);
 						} 
 						else {
 								// Button released
-								sendMIDI(noteOnCommand, note, velocityOff);
+								sendMIDI(noteOnCommand, noteMapping[button], velocityOff);
 						}
 					}
 				}
