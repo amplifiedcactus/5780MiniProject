@@ -23,11 +23,22 @@ HARDWARE SETUP:
 
 We are using 5 external pushbuttons, 1 pushbutton that is provided on the discovery board, a potentiometer, a 74AHCT125 for converting 3.3V signals to 5V, 2 220 Ohm resistors, and a MIDI DIN connector. See wiring diagram for connections to discovery board.
 
-We have tested the controller/sequencer using a COTS (commercial off the shelf) USB to MIDI interface, a laptop, and a online MIDI keyboard tester (virtualpiano.eu). See videos below.
+We have tested the controller/sequencer using a COTS (commercial off the shelf) USB to MIDI interface, a laptop, and a online MIDI keyboard tester (virtualpiano.eu). See videos below. 
 
 WIRING DIAGRAM:
 
 SOFTWARE DESCRIPTION:
+
+There are 4 main sections of the software:
+
+Initialization: Setup of the USART3 (MIDI output), ADC (potentiometer input), GPIO (pushbuttons), and Timer 2 (sequencer) occurs in this section.
+Pause Mode While Loop: In this while loop, button presses are read, output to the MIDI interface, and added to the sequence. The potentiometer value is also read for the velocity value. The timer 2 interrupt is also disabled to stop the sequencer if it was previously in play mode.
+Play Mode While Loop: In this while loop, the timer 2 interrupt is enabled.
+Timer 2 Interrupt Handler: When the timer 2 count reaches its set ARR value, the counter resets and the interrupt handler is executed. In this interrupt handler, the sequence notes are sent to the MIDI interface from the sequence array, and the timer 2 ARR value is updated based on the potentiometer value to adjust tempo of the sequence playback.
+
+
+<img width="556" alt="image" src="https://github.com/amplifiedcactus/5780MiniProject/assets/153122872/2fe406e5-995e-441f-986f-701c950c79f8">
+
 
 VIDEOS:
 
