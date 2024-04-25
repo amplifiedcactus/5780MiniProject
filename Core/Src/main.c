@@ -46,7 +46,7 @@ int usart_flag = 0; //Flag for if a character has been read by UART3
 int velocityArray[8] = {0};
 int sequenceCount = 0; //Integer for counting through sequence array
 int lastCommand = 0; //This variable holds the last transmitted MIDI command for implementing running status
-NoteInfo sequence[8]; //Sequence array of 8 notes - modified to include NoteInfo
+NoteInfo sequence[16]; //Sequence array of 8 notes - modified to include NoteInfo
 uint32_t pressTime[6];  // Store press times for each button
 uint32_t releaseTime[6]; // Store release times for each button
 // MIDI notes for each button
@@ -137,6 +137,67 @@ void setupUART3(void) {
 
 
 
+
+//This is a function for transmitting a single character to UART3
+void sctransmit(char x) {
+	//wait for transmit register to be empty
+	while (1) {
+		if (USART3->ISR & (1 << 7)) {
+			break;
+		}
+	}
+	//write character to transmit register
+	USART3->TDR = x;
+}
+
+//This is a function for transmitting a single integer 0-9 to UART3
+void digitTransmit(int x) {
+	
+	//wait for transmit register to be empty
+	while (1) {
+		if (USART3->ISR & (1 << 7)) {
+			break;
+		}
+	}
+	//write character to transmit register
+	USART3->TDR = '0' + x;
+}
+
+void intTransmit (int x) {
+	sctransmit('\r');
+	int a[5] = {0};
+	int count = 0;
+	while (count < 5) {
+		a[count] = x % 10;
+		x /= 10;
+		count += 1;
+	}
+	for (int i = 4; i >= 0; i--)
+		digitTransmit(a[i]);
+	
+	sctransmit('\r');
+	sctransmit('\n');
+}
+
+
+
+//This is a function for converting a integer to a 16 bit binary and transmitting it to UART3
+void transmit16bits(int x) {
+	setupUART3();
+	sctransmit('\r');
+	for (int i = 15; i >= 0; i = i - 1){
+		int t = 0;
+		if (x & (1 << i))
+			t = 1;
+		digitTransmit(t);
+	}
+	sctransmit('\r');
+	sctransmit('\n');
+}
+
+
+
+
 //This function takes a command (x), note (y), and velocity (z) as inputs and transmits them to the UART interface
 void sendMIDI(int x, int y, int z) {
 	
@@ -176,6 +237,9 @@ void USART3_4_IRQHandler(void) {
 	r = USART3->RDR;
 	usart_flag = 1;
 }
+
+
+
 
 
 //set up pin PC0 as analog input 10 for ADC
@@ -234,7 +298,7 @@ void addNoteToSequence(int button, int velocity, uint32_t duration) {
         sequence[sequenceCount].note = noteMapping[button];
         sequence[sequenceCount].velocity = velocity;
         sequence[sequenceCount].duration = duration;
-        sequenceCount = (sequenceCount + 1) % 8;
+        sequenceCount = (sequenceCount + 1) % 16;
     }
 }
 
@@ -244,20 +308,28 @@ void addNoteToSequence(int button, int velocity, uint32_t duration) {
 void TIM2_IRQHandler(void) {
 	//Send sequence note to MIDI interface
 	//sendMIDI(0x90, sequence[sequenceCount], velocityArray[sequenceCount]);
-	if (sequence[sequenceCount].note != 0) {
-        sendMIDI(0x90, sequence[sequenceCount].note, sequence[sequenceCount].velocity);
-        HAL_Delay(sequence[sequenceCount].duration);  // Play the note for its duration
-        sendMIDI(0x80, sequence[sequenceCount].note, 0);  // Note off
-    }
+//	if (sequence[sequenceCount].note != 0) {
+//        sendMIDI(0x90, sequence[sequenceCount].note, sequence[sequenceCount].velocity);
+//        HAL_Delay(sequence[sequenceCount].duration);  // Play the note for its duration
+//        sendMIDI(0x80, sequence[sequenceCount].note, 0);  // Note off
+//    }
 	//Add to sequence count, if it is 8, go back to 0
 //	sequenceCount = sequenceCount + 1;
 //	if (sequenceCount > 7)
 //		sequenceCount = 0;
-	 sequenceCount = (sequenceCount + 1) % 8;
 	
-	int read = readADC();
-	if (read > 0)
-		TIM2->ARR = read*3;
+	sendMIDI(0x90, sequence[sequenceCount].note, sequence[sequenceCount].velocity);
+	TIM2->ARR = sequence[sequenceCount].duration;
+	
+	//transmit16bits(sequence[sequenceCount].duration);
+	
+	sequenceCount = (sequenceCount + 1) % 16;
+	
+	
+//	
+//	int read = readADC();
+//	if (read > 0)
+//		TIM2->ARR = read*3;
 	
 	NVIC->ICPR[0U]	|= (1 << 0); //clear NVIC pending flag
 	TIM2->SR &= ~(1 << 0); //clear update interrupt flag
@@ -310,6 +382,7 @@ int main(void)
 	RCC->AHBENR |= RCC_AHBENR_GPIOBEN; // Enable peripheral clock to GPIOA
 	RCC->APB1ENR |= RCC_APB1ENR_USART3EN; // Enable peripheral clock to USART3
 	RCC->APB1ENR |= RCC_APB1ENR_TIM2EN; //Enable peripheral clock to Timer 2
+	RCC->APB1ENR |= RCC_APB1ENR_TIM3EN; //Enable peripheral clock to Timer 3
 	
 	setupUART3();
 	setupADC();
@@ -326,6 +399,13 @@ int main(void)
 	TIM2->ARR = 250; //Set auto-reload register to 250 to set frequency to 4Hz
 	TIM2->DIER |= (1 << 0); //Enable Update interrupt
 	TIM2->CR1 |= (1 << 0); //Set CEN bit to enable counter
+	
+	
+	//Set up timer 3
+	TIM3->PSC = 7999; //Set PSC to 7999 for 1 count every 1ms
+	TIM3->ARR = 0xFFFF; //Set initial ARR to max value, 65 seconds
+	TIM3->CR1 |= (1 << 0); //Set CEN bit to enable counter
+
 
 	
 	//Initialize 4 byte array for note on command
@@ -348,11 +428,20 @@ int main(void)
 	uint8_t ADCState; //State for potentiometer
 	uint8_t prevADCState = 0; 
 	
+	uint32_t count1 = 0;
+	uint32_t count2 = 0;
+	uint8_t lastButton = 0;
+	uint8_t lastVelocity = 0;
+	uint32_t lastDuration = 0;
+
 
 	int switchMode = 0; //This is used to break out of two loops to go to Play mode
 	
 	//Main infinite while loop
 	while (1) {
+		
+		
+		
 		
 		//Pause mode while loop
 		while (1) {
@@ -361,8 +450,8 @@ int main(void)
 			
 			NVIC_DisableIRQ (TIM2_IRQn); //disable NVIC interrupt to stop sequencer
 
-			
-			// Loop over each button and check its state
+
+		// Loop over each button and check its state
 			for (int button = 0; button < 6; button++) {
 				 switch (button) {
 					case 0: currentState = GPIOA->IDR & (1 << 0); break; // Original button
@@ -387,18 +476,63 @@ int main(void)
 						prevState[button] = currentState;
 						int note = NOTE_BUTTON_1 + button; // Assign the note based on button index
 						if (currentState) {
-                prevState[button] = currentState;
-                if (currentState) {
-                    pressTime[button] = HAL_GetTick();  // Record press time
-                } else {
-                    releaseTime[button] = HAL_GetTick();  // Record release time
-                    uint32_t duration = releaseTime[button] - pressTime[button];
-                    addNoteToSequence(button, readADC()/4, duration);  // Store note with duration
-                }
-            }
+//								// Button pressed
+//								if (button == 0) {
+//									switchMode = 1;
+//									break;
+//								}
+								
+							
+							//If first button is pressed, start recording
+							sendMIDI(noteOnCommand, note, velocityOn);
+							
+							lastButton = button;
+							lastVelocity = readADC()/4;
+							//lastDuration = 0;
+							
+							
+			
+							
+							
+							//add previous note to sequence
+							if (sequenceCount != 0){
+								addNoteToSequence(lastButton, lastVelocity, TIM3->CNT - count1); 
+							}
+							
+							count1 = TIM3->CNT;
+							//reset counter
+
+						} 
+						else {
+							// Button released
+							sendMIDI(noteOnCommand, note, velocityOff);
+							//count2 = TIM3->CNT - count1;
+							
+							
+							//add previous note to sequence
+							addNoteToSequence(lastButton, lastVelocity, TIM3->CNT - count1); 
+							
+							lastButton = button;
+							lastVelocity = 0;
+							//lastDuration = 0;
+							
+							count1 = TIM3->CNT;
+							//reset counter
+							
+						
+							if (sequenceCount == 15) {
+								//wait for blue button press, then end sequence
+								HAL_Delay(200);
+								addNoteToSequence(lastButton, lastVelocity, TIM3->CNT - count1); 
+								switchMode = 1;
+								break;
+							}
+						}
 					}
 				}
 			}
+			
+			
 			 
 			
 			//read ADC and change velocity
@@ -428,33 +562,32 @@ int main(void)
 			GPIOC->ODR &= ~((1 << 6) | (1 << 7) | (1 << 8) | (1 << 9)); //turn off other LEDs
 			GPIOC->ODR |= (1 << 9); //Turn on green LED to show that play mode is active
 			
-			
 			NVIC_EnableIRQ (TIM2_IRQn); //enable NVIC interrupt for sequencer
 			NVIC_SetPriority (TIM2_IRQn, 3); //set EXTI0 interrupt priority to 3
 
 			//Detect when a button is pressed, if it h
+			HAL_Delay(20);
 			
 			
 			
 			
 			
-			
-			
-			//Break out of while loop if button 0 is pressed:
-			debouncer = (debouncer << 1); // Always shift every loop iteration
-			if (GPIOA->IDR & (1 << 0)) { // If input signal is set/high
-			debouncer |= 0x01; // Set lowest bit of bit-vector
-			}
-			if (debouncer == 0xFFFFFFFF) {
-			// This code triggers repeatedly when button is steady high!
-			}
-			if (debouncer == 0x00000000) {
-			// This code triggers repeatedly when button is steady low!
-			}
-			if (debouncer == 0x7FFFFFFF) {
-			// This code triggers only once when transitioning to steady high!
-				break;
-			}
+//			
+//			//Break out of while loop if button 0 is pressed:
+//			debouncer = (debouncer << 1); // Always shift every loop iteration
+//			if (GPIOA->IDR & (1 << 0)) { // If input signal is set/high
+//			debouncer |= 0x01; // Set lowest bit of bit-vector
+//			}
+//			if (debouncer == 0xFFFFFFFF) {
+//			// This code triggers repeatedly when button is steady high!
+//			}
+//			if (debouncer == 0x00000000) {
+//			// This code triggers repeatedly when button is steady low!
+//			}
+//			if (debouncer == 0x7FFFFFFF) {
+//			// This code triggers only once when transitioning to steady high!
+//				break;
+//			}
 		}
 	}
 }
