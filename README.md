@@ -42,6 +42,14 @@ There are 4 main sections of the software:
 
 VIDEOS:
 
+Presentation:
+
+Close up demo:
+
+https://github.com/amplifiedcactus/5780MiniProject/assets/153122872/2c026e7c-25be-42fd-abb1-25891fd9f2df
+
+
+
 REFERENCE:
 
 http://www.shclemen.com/download/The%20Complete%20MIDI1.0%20Detailed%20Spec.pdf
