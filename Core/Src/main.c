@@ -35,22 +35,11 @@
 /* USER CODE BEGIN PD */
 
 //GLOBAL VARIABLES
-char r = 0; //This is for the character typed into the terminal
-int usart_flag = 0; //Flag for if a character has been read by UART3
-int sequence[8] = {60, 60, 60, 60, 60, 60, 60, 60}; //Sequence array of 8 notes - initialized to chromatic scale
+int sequence[8] = {60, 60, 60, 60, 60, 60, 60, 60}; //Sequence array of 8 notes
 int velocityArray[8] = {0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40};
 int sequenceCount = 0; //Integer for counting through sequence array
-int sequenceCount16 = 0; //Integer for counting through sequence array
+int sequenceCount16 = 0; //Integer for counting through sequence array with note off commands
 int lastCommand = 0; //This variable holds the last transmitted MIDI command for implementing running status
-
-
-// MIDI notes for each button
-#define NOTE_BUTTON_1 0x40 // E3
-#define NOTE_BUTTON_2 0x36 // F3
-#define NOTE_BUTTON_3 0x38 // F#3(Gb3)
-#define NOTE_BUTTON_4 0x40 // G3
-#define NOTE_BUTTON_5 0x46 // G#3(Ab3)
-#define NOTE_BUTTON_6 0x48 // A3
 int noteMapping[6] = {0x3C, 60, 62, 64, 67, 69}; //array to map button indices to MIDI note values
 /* USER CODE END PD */
 
@@ -95,6 +84,7 @@ void setupLED(void) {
 	//GPIOC->ODR &= ~((1 << 6) | (1 << 7) | (1 << 8) | (1 << 9));
 }
 
+//This function sets up the USART3 peripheral for use as a MIDI data output
 void setupUART3(void) {
 	
 	// Set PC4 (USART3_TX) and PC5 (USART3_RX) to alternate function mode
@@ -117,11 +107,6 @@ void setupUART3(void) {
 	//enable transmitter and receiver
 	USART3->CR1 |= (1 << 3) | (1 << 2);
 	
-	//enable RXNE interrupt
-	USART3->CR1 |= (1 << 5);
-	NVIC_EnableIRQ (USART3_4_IRQn); //enable NVIC interrupt
-	NVIC_SetPriority (USART3_4_IRQn, 3);
-	
 	//enable USART 3
 	USART3->CR1 |= (1 << 0);
 }
@@ -133,17 +118,15 @@ void setupUART3(void) {
 
 //This function takes a command (x), note (y), and velocity (z) as inputs and transmits them to the UART interface
 void sendMIDI(int x, int y, int z) {
-	
-	
 	//If last command is not same as previous (running status), send command once transmit register is empty
-	//if (x != lastCommand) {
+	if (x != lastCommand) {
 		while (1) {
 			if (USART3->ISR & (1 << 7)) {
 				break;
 			}
 		}
 		USART3->TDR = x;
-	//}
+	}
 	
 	//send note once transmit register is empty
 	while (1) {
@@ -162,17 +145,10 @@ void sendMIDI(int x, int y, int z) {
 	USART3->TDR = z;
 	
 	//update last command variable
-	//lastCommand = x;
+	lastCommand = x;
 }
 
-//This is the USART3 interrupt handler that puts the read character into char r and sets the usart_flag
-void USART3_4_IRQHandler(void) {
-	r = USART3->RDR;
-	usart_flag = 1;
-}
-
-
-//set up pin PC0 as analog input 10 for ADC
+//set up pin PC0 as analog input 10 for ADC to read potentiometer values
 void setupADC(void) {
 	RCC->APB2ENR |= RCC_APB2ENR_ADCEN; //Enable peripheral clock to ADC1
 	//Set to analog mode
@@ -206,6 +182,7 @@ void setupADC(void) {
 	ADC1->CR |= (1 << 2);
 }
 
+//This is a function for reading the ADC value
 uint32_t readADC(void) {
     // Start ADC conversion
     ADC1->CR |= ADC_CR_ADSTART;
@@ -213,28 +190,14 @@ uint32_t readADC(void) {
     while (!(ADC1->ISR & ADC_ISR_EOC)) {}
     return ADC1->DR; // Read ADC value
 }
-//visual feedback to ensure that pressing buttons actaully adds the notes to the sequence
-//void turnOnOrangeLED(void) {
-//    GPIOC->ODR |= (1 << 8); //Toggle orange LED  // Turn on the LED by setting the pin high
-//}
 
-//void turnOffOrangeLED(void) {
-//    GPIOC->ODR &= ~(1 << 8);  // Turn off the LED by setting the pin low
-//}
 //This function adds notes to the sequence array
 void addNoteToSequence(int button, int velocity) {
-	//TODO: Add button pressed to sequence, if sequence is full, FIFO
-  
     if (button >= 0 && button < sizeof(noteMapping) / sizeof(noteMapping[0])) { //check if the button index is within the array of note mapping
         int noteValue = noteMapping[button]; //fetch note values
         sequence[sequenceCount] = noteValue;
 				velocityArray[sequenceCount] = velocity;
         sequenceCount = (sequenceCount + 1) % 8; //ensuring it stays within the sequence array, 8 in our case
-
-        // Visual feedback: Blink the orange LED
-        //turnOnOrangeLED();
-        //HAL_Delay(5);  
-        //turnOffOrangeLED();
     }
 }
 
@@ -250,11 +213,11 @@ void TIM2_IRQHandler(void) {
 		sendMIDI(0x90, sequence[(sequenceCount16-1)/2], 0);
 	
 	//Add to sequence count, if it is 16, go back to 0
-	
 	if (sequenceCount16 > 15)
 		sequenceCount16 = 0;
 	sequenceCount16 = sequenceCount16 + 1;
 	
+	//Update ARR value based on ADC input to change tempo
 	int read = readADC();
 	if (read > 0)
 		TIM2->ARR = read*2;
@@ -311,11 +274,12 @@ int main(void)
 	RCC->APB1ENR |= RCC_APB1ENR_USART3EN; // Enable peripheral clock to USART3
 	RCC->APB1ENR |= RCC_APB1ENR_TIM2EN; //Enable peripheral clock to Timer 2
 	
+	//call setup functions
 	setupUART3();
 	setupADC();
 	setupLED();
 	
-	
+	//set up button inputs
 	GPIOA->PUPDR |= 0xAAA8;
 	GPIOC->PUPDR |= (1 << 3) | (1 << 5);
 	GPIOB->MODER &= ~0xF;
@@ -340,7 +304,6 @@ int main(void)
 	
 	uint32_t debouncer = 0; //Debouncer variable for button 0
 
-		
 	//Variables for debouncing code
 	uint8_t prevState[6] = {0}; // One for each button
 	uint8_t currentState;
@@ -361,7 +324,6 @@ int main(void)
 			
 			NVIC_DisableIRQ (TIM2_IRQn); //disable NVIC interrupt to stop sequencer
 
-			
 			// Loop over each button and check its state
 			for (int button = 0; button < 6; button++) {
 				 switch (button) {
@@ -385,7 +347,7 @@ int main(void)
 					}
 					if (currentState != prevState[button]) {
 						prevState[button] = currentState;
-						int note = NOTE_BUTTON_1 + button; // Assign the note based on button index
+						//int note = NOTE_BUTTON_1 + button; // Assign the note based on button index
 						if (currentState) {
 								// Button pressed
 								if (button == 0) {
@@ -405,26 +367,16 @@ int main(void)
 			 
 			
 			//read ADC and change velocity
-			
 			velocityOn = readADC()/4;
-			
-			
-			
-			if (switchMode == 1){
-				//change velocity in pause mode
-				//if (button == 0){
-				  //   sendMIDI(noteOnCommand, note, velocityOff);
-				       //}
-				//else {
-				// sendMIDI(noteOnCommand, note, velocityOn);
-		                   //	}
-				
+
+			//switch modes when button is pressed
+			if (switchMode == 1){	
 				switchMode = 0;
 				break;
 			}
 		}
 		
-		HAL_Delay(200);
+		HAL_Delay(200); //pause between play and pause mode
 		
 		//Play while loop
 		while (1) {
@@ -435,14 +387,6 @@ int main(void)
 			NVIC_EnableIRQ (TIM2_IRQn); //enable NVIC interrupt for sequencer
 			NVIC_SetPriority (TIM2_IRQn, 3); //set EXTI0 interrupt priority to 3
 
-			//Detect when a button is pressed, if it h
-			
-			
-			
-			
-			
-			
-			
 			//Break out of while loop if button 0 is pressed:
 			debouncer = (debouncer << 1); // Always shift every loop iteration
 			if (GPIOA->IDR & (1 << 0)) { // If input signal is set/high
