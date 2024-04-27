@@ -27,6 +27,8 @@ We have tested the controller/sequencer using a COTS (commercial off the shelf) 
 
 WIRING DIAGRAM:
 
+![Schematic (2) _1](https://github.com/amplifiedcactus/5780MiniProject/assets/153122872/f41bdd32-51b2-4d7e-b748-699eca35e12c)
+
 SOFTWARE DESCRIPTION:
 
 There are 4 main sections of the software:
@@ -43,6 +45,8 @@ There are 4 main sections of the software:
 VIDEOS:
 
 Presentation:
+
+Submitted by Ajay on Canvas
 
 Close up demo:
 
